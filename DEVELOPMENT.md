@@ -1084,7 +1084,7 @@ Rust 签名算法、生成绑定或依赖锁。
 
 2026-11-19 晚间在同一独立工作区补充多成员 gzip 修复和 V5 安全诊断后，
 重建 Android Rust 双 ABI 与 arm64 split release，版本仍为 `1.0.205+210`
-（versionCode `2210`）。本轮包 SHA-256 为
+（versionCode `2210`）。本轮留存于仓库外证据目录的验证包 SHA-256 为
 `766fed10f3441bb2730b335390f1233d1a942aa028793f2bd64eed36dd027134`，
 签名、ABI、ELF/ZIP 16 KiB 对齐及安装后哈希核对通过。修改的是既有 gzip、
 恢复与本地用途断言；本轮没有新增测试文件或测试函数。受影响 Flutter 用例、
