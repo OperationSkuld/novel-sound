@@ -99,6 +99,9 @@ jobs:
       - name: Fakesign for TrollStore and package IPA
         run: bash scripts/sign_ios_trollstore.sh build/ios/iphoneos/Runner.app "dist/${IPA_NAME}"
 
+      - name: Verify IPA structure and fakesignatures
+        run: python3 scripts/verify_ios_trollstore_ipa.py "dist/${IPA_NAME}" "dist/${IPA_NAME}.sha256"
+
       - name: Write build info and release notes
         run: |
           set -euo pipefail
@@ -117,7 +120,7 @@ jobs:
           {
             echo "## 什锦铺 iOS 自签包（TrollStore）"
             echo
-            echo "- 版本：$base_version（$version），提交 \`${GITHUB_SHA:0:7}\`"
+            echo "- 版本：${base_version}（${version}），提交 \`${GITHUB_SHA:0:7}\`"
             echo "- 从 \`v1.0.206\` 源码构建，Flutter 3.50.0 / Rust 1.99.1 / Xcode 26.2"
             echo "- \`$IPA_NAME\` 为 **ldid 伪签名**（空 entitlements），必须用 [TrollStore](https://github.com/opa334/TrollStore) 安装，不能直接用普通侧载工具安装"
             echo "- 适用系统：iOS 14.0–16.6.1、16.7 RC、17.0；iPhone 14 / iOS 16.1 在支持范围内"
