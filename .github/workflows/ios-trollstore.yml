@@ -1,0 +1,158 @@
+name: iOS TrollStore IPA
+
+# 构建 v1.0.206 的 iOS 真机包，并用 ldid 伪签名成 TrollStore 可安装的 IPA。
+# 不需要 Apple 开发者账号，也不需要描述文件；CI 里只产出 ad-hoc/fakesign 包。
+on:
+  workflow_dispatch:
+    inputs:
+      build_ref:
+        description: '构建分支或提交（默认 ios-ci）'
+        required: true
+        type: string
+        default: ios-ci
+  push:
+    branches: [ios-ci]
+    paths:
+      - 'lib/**'
+      - 'ios/**'
+      - 'rust/**'
+      - 'native/**'
+      - 'pubspec.*'
+      - 'scripts/build_rust_ios.sh'
+      - 'scripts/sign_ios_trollstore.sh'
+      - '.github/workflows/ios-trollstore.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ios-trollstore-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 90
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
+      IPA_NAME: fqapp-ios-trollstore.ipa
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.build_ref || github.sha }}
+
+      - name: Verify Xcode and iOS SDK
+        run: |
+          set -euo pipefail
+          test -d "$DEVELOPER_DIR"
+          xcodebuild -version
+          sdk_version="$(xcrun --sdk iphoneos --show-sdk-version)"
+          echo "Selected iOS SDK: $sdk_version"
+          if [ "${sdk_version%%.*}" -lt 26 ]; then
+            echo '::error::iOS SDK 26+ is required by this dependency set.'
+            exit 1
+          fi
+
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec
+        with:
+          toolchain: '1.99.1'
+          targets: aarch64-apple-ios
+
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.50.0'
+          channel: stable
+          cache: true
+
+      - name: Install ldid and CocoaPods
+        run: |
+          set -euo pipefail
+          brew install ldid
+          brew install cocoapods || brew upgrade cocoapods
+          ldid -h >/dev/null 2>&1 || ldid -h 2>&1 | head -3
+          echo "CocoaPods: $(pod --version)"
+
+      - name: Resolve dependencies
+        run: |
+          flutter config --no-enable-swift-package-manager
+          flutter pub get --enforce-lockfile
+
+      - name: Build Rust static library for iOS
+        run: bash scripts/build_rust_ios.sh
+
+      - name: Install CocoaPods dependencies
+        run: cd ios && pod install
+
+      - name: Build unsigned iOS app
+        run: flutter build ios --release --no-codesign --no-pub
+
+      - name: Verify built app
+        run: |
+          set -euo pipefail
+          app=build/ios/iphoneos/Runner.app
+          test -f "$app/Runner"
+          test -f "$app/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$app/Info.plist"
+          lipo -info "$app/Runner"
+
+      - name: Fakesign for TrollStore and package IPA
+        run: bash scripts/sign_ios_trollstore.sh build/ios/iphoneos/Runner.app "dist/${IPA_NAME}"
+
+      - name: Write build info and release notes
+        run: |
+          set -euo pipefail
+          version="$(grep -E '^version:' pubspec.yaml | awk '{print $2}')"
+          base_version="${version%%+*}"
+          {
+            echo "版本：$base_version ($version)"
+            echo "提交：$GITHUB_SHA"
+            echo "分支/标签：${GITHUB_REF_NAME}"
+            echo "构建时间：$(date -u '+%Y-%m-%d %H:%M UTC')"
+            echo "构建：Flutter 3.50.0 / Rust 1.99.1 / Xcode 26.2"
+            echo "签名：ldid 伪签名（空 entitlements），供 TrollStore 安装"
+            echo "Bundle ID：com.fqapp.fqapp"
+            echo "IPA SHA-256：$(cat dist/${IPA_NAME}.sha256)"
+          } > "dist/build-info.txt"
+          {
+            echo "## 什锦铺 iOS 自签包（TrollStore）"
+            echo
+            echo "- 版本：$base_version（$version），提交 \`${GITHUB_SHA:0:7}\`"
+            echo "- 从 \`v1.0.206\` 源码构建，Flutter 3.50.0 / Rust 1.99.1 / Xcode 26.2"
+            echo "- \`$IPA_NAME\` 为 **ldid 伪签名**（空 entitlements），必须用 [TrollStore](https://github.com/opa334/TrollStore) 安装，不能直接用普通侧载工具安装"
+            echo "- 适用系统：iOS 14.0–16.6.1、16.7 RC、17.0；iPhone 14 / iOS 16.1 在支持范围内"
+            echo "- 无 Apple 账号、无描述文件、无 7 天过期限制；卸载需在 TrollStore 的应用列表里进行"
+            echo "- 校验值见 \`${IPA_NAME}.sha256\`，构建信息见 \`build-info.txt\`"
+            echo
+            echo "安装：把 IPA 下载到手机，在 TrollStore 中打开即可。若图标缓存重载后打不开，在 TrollStore 设置里安装 Persistence Helper。"
+            echo
+            echo "说明：本次仅完成 CI 编译与签名；搜索、书架、阅读、播放、登录等功能仍需真机验证。"
+          } > dist/RELEASE_NOTES.md
+          cat "dist/build-info.txt"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: fqapp-ios-trollstore
+          path: |
+            dist/${{ env.IPA_NAME }}
+            dist/${{ env.IPA_NAME }}.sha256
+            dist/build-info.txt
+            dist/RELEASE_NOTES.md
+          if-no-files-found: error
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="$(grep -E '^version:' pubspec.yaml | awk '{print $2}')"
+          base_version="${version%%+*}"
+          tag="ios-${base_version}-trollstore"
+          gh release delete "$tag" --yes --cleanup-tag 2>/dev/null || true
+          gh release create "$tag" \
+            "dist/${IPA_NAME}" \
+            "dist/${IPA_NAME}.sha256" \
+            dist/build-info.txt \
+            --title "iOS $base_version TrollStore 自签 IPA" \
+            --notes-file dist/RELEASE_NOTES.md
+          echo "Released $tag"
