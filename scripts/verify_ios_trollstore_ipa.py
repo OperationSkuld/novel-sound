@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Verify a TrollStore IPA: ZIP integrity, metadata and fakesignatures.
 
-Usage: python3 scripts/verify_ios_trollstore_ipa.py <ipa> [sha256-file]
+Usage: python3 scripts/verify_ios_trollstore_ipa.py <ipa> [sha256-file] [expected-version]
 """
 from __future__ import annotations
 
@@ -82,6 +82,7 @@ def main() -> int:
             print("ERROR: checksum mismatch", file=sys.stderr)
             return 1
         print("Checksum matches sidecar file")
+    expected_version = sys.argv[3] if len(sys.argv) > 3 else None
 
     with zipfile.ZipFile(ipa) as zf:
         bad = zf.testzip()
@@ -99,8 +100,8 @@ def main() -> int:
         if info.get("CFBundleIdentifier") != "com.fqapp.fqapp":
             print("ERROR: unexpected bundle identifier", file=sys.stderr)
             return 1
-        if info.get("CFBundleShortVersionString") != "1.0.206":
-            print("ERROR: unexpected version", file=sys.stderr)
+        if expected_version and info.get("CFBundleShortVersionString") != expected_version:
+            print(f"ERROR: unexpected version (expected {expected_version})", file=sys.stderr)
             return 1
 
         machos = {}

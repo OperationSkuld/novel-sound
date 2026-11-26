@@ -1,6 +1,6 @@
 # iOS TrollStore 自签 IPA 构建
 
-`ios-trollstore.yml` 在 GitHub Actions 的 macOS runner 上把 `v1.0.206` 源码编译为 iOS 真机包，
+`ios-trollstore.yml` 在 GitHub Actions 的 macOS runner 上把 `pubspec.yaml` 当前版本（如 `v1.0.207`）的源码编译为 iOS 真机包，
 并用 `ldid` 伪签名成 TrollStore 可安装的 IPA。整个过程不需要 Apple 开发者账号、描述文件或
 私钥，也没有 7 天签名有效期。
 
